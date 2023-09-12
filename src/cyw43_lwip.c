@@ -50,6 +50,13 @@
 
 #if CYW43_LWIP
 
+uint32_t dhcp_address_last;
+int dhcp_address_reused;
+// define LWIP_DHCP_PERSIST_ADDRESS_REUSE_MAX to persist DHCP leases between deinit/init cycles of cyw43
+#ifndef LWIP_DHCP_PERSIST_ADDRESS_REUSE_MAX
+#define LWIP_DHCP_PERSIST_ADDRESS_REUSE_MAX 0
+#endif
+
 #if CYW43_NETUTILS
 STATIC void cyw43_ethernet_trace(cyw43_t *self, struct netif *netif, size_t len, const void *data, unsigned int flags) {
     bool is_tx = flags & NETUTILS_TRACE_IS_TX;
@@ -175,8 +182,15 @@ void cyw43_cb_tcpip_init(cyw43_t *self, int itf) {
     #if LWIP_IPV4
     if (itf == 0) {
         #if LWIP_DHCP
-        // need to zero out to get isconnected() working
-        IP4_ADDR(&IP(ipconfig[0]), 0, 0, 0, 0);
+        if ( dhcp_address_last && dhcp_address_reused < LWIP_DHCP_PERSIST_ADDRESS_REUSE_MAX )
+        {
+            IP(ipconfig[0]).addr = dhcp_address_last;
+            dhcp_address_reused++;
+        } else {
+            // need to zero out to get isconnected() working
+            IP4_ADDR(&IP(ipconfig[0]), 0, 0, 0, 0);
+            dhcp_address_reused = 0;
+        }
         #else
         // using static IP address
         IP(ipconfig[0]).addr = PP_HTONL(CYW43_DEFAULT_IP_STA_ADDRESS);
@@ -220,8 +234,11 @@ void cyw43_cb_tcpip_init(cyw43_t *self, int itf) {
         dns_setserver(0, &ipconfig[3]);
         #endif
         #if LWIP_DHCP
-        dhcp_set_struct(n, &self->dhcp_client);
-        dhcp_start(n);
+        if ( !ipconfig[0].addr )
+        {
+            dhcp_set_struct(n, &self->dhcp_client);
+            dhcp_start(n);
+        }
         #endif
         #endif
         #if LWIP_IPV6
@@ -242,7 +259,13 @@ void cyw43_cb_tcpip_deinit(cyw43_t *self, int itf) {
     struct netif *n = &self->netif[itf];
     if (itf == CYW43_ITF_STA) {
         #if LWIP_IPV4 && LWIP_DHCP
-        dhcp_stop(n);
+        if ( !LWIP_DHCP_PERSIST_ADDRESS_REUSE_MAX || dhcp_address_reused >= LWIP_DHCP_PERSIST_ADDRESS_REUSE_MAX )
+        {
+            dhcp_release_and_stop(n);
+        } else {
+            // only stop dhcp locally, don't signal release to server
+            dhcp_stop(n);
+        }
         #endif
     } else {
         #if CYW43_NETUTILS
@@ -305,6 +328,9 @@ int cyw43_tcpip_link_status(cyw43_t *self, int itf) {
         }
         #endif
         if (have_address) {
+            #if LWIP_DHCP
+            dhcp_address_last = ip_2_ip4(&netif->ip_addr)->addr;
+            #endif
             return CYW43_LINK_UP;
         } else {
             return CYW43_LINK_NOIP;
