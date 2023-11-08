@@ -71,7 +71,7 @@ extern bool enable_spi_packet_dumping;
 // Include the file containing the WiFi+CLM firmware blob as a C array.
 #include CYW43_CHIPSET_FIRMWARE_INCLUDE_FILE
 
-#define CYW43_CLM_ADDR (fw_data + ALIGN_UINT(CYW43_WIFI_FW_LEN, 512))
+#define CYW43_CLM_ADDR (fw_data.addr + ALIGN_UINT(fw_data.wifi_fw_len, 512))
 #define VERIFY_FIRMWARE_DOWNLOAD (0)
 
 #define ALIGN_UINT(val, align) (((val) + (align) - 1) & ~((align) - 1))
@@ -1655,10 +1655,10 @@ alp_set:
     cyw43_write_backplane(self, SOCSRAM_BANKX_PDA, 4, 0);
 
     // Take firmware from the address space
-    cyw43_download_resource(self, 0x00000000, CYW43_WIFI_FW_LEN, 0, fw_data);
+    cyw43_download_resource(self, 0x00000000, fw_data.wifi_fw_len, 0, fw_data.addr);
     /*
     // Take firmware from storage block device
-    cyw43_download_resource(self, 0x00000000, CYW43_WIFI_FW_LEN, 1, 0x100 + 0x1000);
+    cyw43_download_resource(self, 0x00000000, fw_data.wifi_fw_len, 1, 0x100 + 0x1000);
     */
 
     size_t wifi_nvram_len = ALIGN_UINT(sizeof(wifi_nvram_4343), 64);
